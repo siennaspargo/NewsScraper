@@ -5,9 +5,17 @@ var express = require("express");
 var logger = require("morgan");
 var mongojs = require("mongojs");
 var mongoose = require("mongoose");
+// Our scraping tools
+// Axios is a promised-based http library, similar to jQuery's Ajax method
+// It works on the client and on the server
+var axios = require("axios");
+var cheerio = require("cheerio");
+
+
+var PORT = process.env.PORT || 3000;
 
 // Requiring the `User` model for accessing the `users` collection
-var Headline = require("./models/Headline");
+var db = require("./models");
 
 
 // Initialize Express
@@ -22,7 +30,7 @@ app.use(express.json());
 app.use(express.static("public"));
 
 // Connect to the Mongo DB
-mongoose.connect("mongodb://localhost/userdb", { useNewUrlParser: true });
+mongoose.connect("mongodb://localhost/ArticlesAndNotes", { useNewUrlParser: true });
 
 // Mongojs configuration
 var databaseUrl = "NotesAndArticles";
@@ -34,253 +42,183 @@ db.on("error", function(error) {
   console.log("Database Error:", error);
 });
 
-
 // Routes
 // ======
 
-// Your goal is to complete the routes in the server file so the site can display and edit the article/comments data. Don't worry about the front end, just use MongoJS to finish the routes
+
+// A GET route for scraping the echoJS website
+app.get("/scrape", function(req, res) {
+  // First, we grab the body of the html with axios
+  axios.get("http://www.echojs.com/").then(function(response) {
+    // Then, we load that into cheerio and save it to $ for a shorthand selector
+    var $ = cheerio.load(response.data);
+
+    // Now, we grab every h2 within an article tag, and do the following:
+    $("article h2").each(function(i, element) {
+      // Save an empty result object
+      var result = {};
+
+      // Add the text and href of every link, and save them as properties of the result object
+      result.title = $(this)
+        .children("a")
+        .text();
+      result.link = $(this)
+        .children("a")
+        .attr("href");
+
+      // Create a new Article using the `result` object built from scraping
+      db.Article.create(result)
+        .then(function(dbArticle) {
+          // View the added result in the console
+          console.log(dbArticle);
+        })
+        .catch(function(err) {
+          // If an error occurred, log it
+          console.log(err);
+        });
+    });
+
+        // Send a message to the client
+        res.send("Scrape Complete");
+      });
+    });
+
+// Route for getting all Articles from the db
+app.get("/articles", function(req, res) {
+  // Grab every document in the Articles collection
+  db.Article.find({})
+    .then(function(dbArticle) {
+      // If we were able to successfully find Articles, send them back to the client
+      res.json(dbArticle);
+    })
+    .catch(function(err) {
+      // If an error occurred, send it to the client
+      res.json(err);
+    });
+});
+
+
+// Route for grabbing a specific Article by id, populate it with it's note
+app.get("/articles/:id", function(req, res) {
+  // Using the id passed in the id parameter, prepare a query that finds the matching one in our db...
+  db.Article.findOne({ _id: req.params.id })
+    // ..and populate all of the notes associated with it
+    .populate("note")
+    .then(function(dbArticle) {
+      // If we were able to successfully find an Article with the given id, send it back to the client
+      res.json(dbArticle);
+    })
+    .catch(function(err) {
+      // If an error occurred, send it to the client
+      res.json(err);
+    });
+});
+
+
+// Route for saving/updating an Article's associated Note
+app.post("/articles/:id", function(req, res) {
+  // Create a new note and pass the req.body to the entry
+  db.Note.create(req.body)
+    .then(function(dbNote) {
+      // If a Note was created successfully, find one Article with an `_id` equal to `req.params.id`. Update the Article to be associated with the new Note
+      // { new: true } tells the query that we want it to return the updated User -- it returns the original by default
+      // Since our mongoose query returns a promise, we can chain another `.then` which receives the result of the query
+      return db.Article.findOneAndUpdate({ _id: req.params.id }, { note: dbNote._id }, { new: true });
+    })
+    .then(function(dbArticle) {
+      // If we were able to successfully update an Article, send it back to the client
+      res.json(dbArticle);
+    })
+    .catch(function(err) {
+      // If an error occurred, send it to the client
+      res.json(err);
+    });
+});
+
+// Start the server
+app.listen(PORT, function() {
+  console.log("App running on port " + PORT + "!");
+});
+
+
+
+// // When the server starts, create and save a new Library document to the db
+// // The "unique" rule in the Library model's schema will prevent duplicate libraries from being added to the server
+// db.Article.create({ name: "Article Library" })
+//   .then(function(dbArticle) {
+//     // If saved successfully, print the new Library document to the console
+//     console.log(dbArticle);
+//   })
+//   .catch(function(err) {
+//     // If an error occurs, print it to the console
+//     console.log(err.message);
+//   });
+
 
 
 // post an article to the mongoose database
 
-// Post a book to the mongoose database
-app.post("/submit", function(req, res) {
-  // Save the request body as an object called article
-  var article = req.body;
+// app.post("/submit", function(req, res) {
+//   // Save the request body as an object called article
 
-  // If we want the object to have a boolean value of false,
-  // we have to do it here, because the ajax post will convert it
-  // to a string instead of a boolean
-  article.read = false;
-
-  // save the book object as an entry into the books collection in mongo
-  db.articles.save(article, function (error, saved) {
-    // show errors
-    if (error) {
-      console.log(error);
-    } else {
-      // send response to the client (for AJAX success function)
-      res.send(saved);
-    }
-  })
-});
-
-
-// find all articles in the database
-// Find all books marked as read
-app.get("/read", function(req, res) {
-  // go into mongo collection, find all docs where "read" is true
-  db.articles.find({ read: true }, function(error, found) {
-    // show any errors
-    if (error) {
-      console.log(error);
-    } else {
-      // otherwise, send the books we found to the browser as a json
-      res.json(found);
-    }
-  })
-});
-
-// Find all books marked as unread
-app.get("/unread", function(req, res) {
-  // go into the mongo collection, and find all doc where "read" is false
-  db.articles.find({ read: false}, function(error, found) {
-    // show any errors
-    if (error) {
-      console.log(error);
-    } else {
-      // otherwise, send the books we found to the browser as a json
-      res.json(found);
-    }
-  })
-});
-
-// Mark an article as having been read
-// post or put, not get for updating the database
-app.post("/markread/:id", function(req, res) {
-  // Remember: when searching by an id, the id needs to be passed in
-  // as (mongojs.ObjectId(IdYouWantToFind))
-  db.articles.update(
-    {
-      _id: mongojs.ObjectId(req.params.id)
-    },
-    {
-      // set "read" to true for the article we specified
-      $set: {
-        read: true
-      }
-    },
-    // when the book has been set to true, run this next function:
-    function(error, edited) {
-      // show any errors
-      if (error) {
-        console.log(error);
-        res.send(error);
-      } else {
-        // otherwise, send the result of our update to the browser
-        console.log(edited);
-        res.send(edited);
-      }
-    }
-  );
-});
-
-// Mark a book as having been not read
-app.post("/markunread/:id", function(req, res) {
-  // Remember: when searching by an id, the id needs to be passed in
-  // as (mongojs.ObjectId(IdYouWantToFind))
-
-  // update a doc in the books collection with an ObjectId matching the id parameter in the url
-  db.articles.update(
-    {
-      _id: mongojs.ObjectId(req.params.id)
-    },
-    {
-      // set "read" to false for the book we specified
-      $set: {
-        read: false
-      }
-    },
-    // When that is done, run this function
-    function(error, edited) {
-      // show any errors
-      if (error) {
-        console.log(error);
-        res.send(error);
-      } else {
-       // otherwise, send the result of our update to the browser
-       console.log(edited);
-       res.send(edited);
-      }
-    }
-  );
-});
-
-
-// remove an article from the database
-
-
-// post a comment on an article in the database
-
-
-// remove a comment from the database
-
-
-
-
-
-
-
-
-
-// Listen on port 3000
-app.listen(3000, function() {
-  console.log("App running on port 3000!");
-});
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// // andrew8412@gmail.com
-
-// // dependencies
-// var express = require("express");
-// var mongojs = require("mongojs");
-// var exphbs = require("express-handlebars");
-// var mongoose = require("mongoose");
-
-// // require axios and cheerio to make scraping possible
-// var cheerio = require("cheerio");
-// var axios = require("axios");
-
-// var bodyParser = require("body-parser");
-
-// var db = require('./models')
-// var request = require("request");
-
-// // listen on port
-// var PORT = process.env.PORT || 3000; 
-
-// // Initialize Express
-// var app = express();
-
-// // Database configuration
-// // Save the URL of our database as well as the name of our collection
-// var databaseUrl = "NotesAndArticles";
-// var collections = ["articles"];
-
-// // Use mongojs to hook the database to the db variable
-// var db = mongojs(databaseUrl, collections);
-
-// // This makes sure that any errors are logged if mongodb runs into an issue
-// db.on("error", function(error) {
-//   console.log("Database Error:", error);
+//   // Create a new Book in the database
+//   db.Article.create(req.body)
+//     .then(function(dbArticle) {
+//       // If a Book was created successfully, find one library (there's only one) and push the new Book's _id to the Library's `books` array
+//       // { new: true } tells the query that we want it to return the updated Library -- it returns the original by default
+//       // Since our mongoose query returns a promise, we can chain another `.then` which receives the result of the query
+//       return db.Article.findOneAndUpdate({}, { $push: { articles: dbArticle._id } }, { new: true });
+//     })
+//     .then(function(dbArticle) {
+//       // If the Library was updated successfully, send it back to the client
+//       res.json(dbArticle);
+//     })
+//     .catch(function(err) {
+//       // If an error occurs, send it back to the client
+//       res.json(err);
+//     });
 // });
 
-
-
-// // express router
-// var router = express.Router();
-
-// mongoose.connect("mongodb://localhost/Web Scraper", { useNewUrlParser: true });
-
-// // public folder is static library
-// app.use(express.static(__dirname + "/public"));
-
-// app.engine("handlebars", exphbs({
-//   defaultLayout: "main"
-// }));
-
-// // use bodyParser
-// app.use(bodyParser.urlencoded({
-//   extended: false
-// }));
-
-// // make requests go through router middleware
-// app.use(router);
-
-// // if deployed, use the deployed database, if not, use local database
-// var db = process.env.MONGODB_URI || "mongodb://localhost/mongoHeadlines";
-
-// // connect to db
-// mongoose.connect(db, function(error) {
-//   if (error) {
-//     console.log(error)
-//   } else {
-//     console.log("mongoose connection is successful!!");
-//   }
+// // Route for getting all books from the db
+// app.get("/articles", function(req, res) {
+//   // Using our Book model, "find" every book in our db
+//   db.Book.find({})
+//     .then(function(dbArticle) {
+//       // If any Books are found, send them to the client
+//       res.json(dbArticle);
+//     })
+//     .catch(function(err) {
+//       // If an error occurs, send it back to the client
+//       res.json(err);
+//     });
 // });
 
+// // Route for getting all libraries from the db
+// app.get("/library", function(req, res) {
+//   // Using our Library model, "find" every library in our db
+//   db.Library.find({})
+//     .then(function(dbLibrary) {
+//       // If any Libraries are found, send them to the client
+//       res.json(dbLibrary);
+//     })
+//     .catch(function(err) {
+//       // If an error occurs, send it back to the client
+//       res.json(err);
+//     });
+// });
 
-
-// app.get("/", function(req, res) {
-//   res.send("homepages")
-// })
-
-
-// // Start the server
-// app.listen(PORT, function() {
-//   console.log("App running on port " + PORT + "!");
+// // Route to see what library looks like WITH populating
+// app.get("/populated", function(req, res) {
+//   // Using our Library model, "find" every library in our db and populate them with any associated books
+//   db.Article.find({})
+//     // Specify that we want to populate the retrieved libraries with any associated books
+//     .populate("books")
+//     .then(function(dbArticle) {
+//       // If any Libraries are found, send them to the client with any associated Books
+//       res.json(dbArticle);
+//     })
+//     .catch(function(err) {
+//       // If an error occurs, send it back to the client
+//       res.json(err);
+//     });
 // });

@@ -1,17 +1,16 @@
-// mongoose schemas for notes headlines, indicate what pieces to save in the table like article name,link, notes associated with it
-
 var mongoose = require("mongoose");
 
 // Save a reference to the Schema constructor
 var Schema = mongoose.Schema;
 
 // Using the Schema constructor, create a new UserSchema object
-// This is similar to a Sequelize model
+
 var ArticleSchema = new Schema({
   // `title` is required and of type String
   title: {
     type: String,
-    required: true
+    required: true,
+    unique: true
   },
   // `link` is required and of type String
   link: {
