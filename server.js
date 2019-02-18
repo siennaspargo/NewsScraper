@@ -1,34 +1,32 @@
-// connecting to the database
 
-// Dependencies
+// Dependencies must use for credit
 var express = require("express");
-var logger = require("morgan");
-var mongojs = require("mongojs");
-var mongoose = require("mongoose");
-var bodyParser = require("body-parser");
-// Our scraping tools
-// Axios is a promised-based http library, similar to jQuery's Ajax method
-// It works on the client and on the server
-var axios = require("axios");
-var cheerio = require("cheerio");
-
 var exphbs = require("express-handlebars");
+var mongoose = require("mongoose");
+var cheerio = require("cheerio");
+var axios = require("axios");
+// extra dependencies
+var logger = require("morgan");
+var bodyParser = require("body-parser");
 
+// Requiring the databases
+var dbA = require("./models/Article");
+var dbS = require("./models/Saved");
+var dbN = require("./models/Note");
+
+// If deployed, use the deployed database. Otherwise use the local mongoHeadlines database
+var MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost/ArticlesAndNotes";
+
+// Connect to the Mongo DB
+mongoose.connect(MONGODB_URI, { useNewUrlParser: true });
 
 var PORT = process.env.PORT || 3000;
 
-// Requiring the `User` model for accessing the `users` collection
-var db = require("./models");
 
-
-// Initialize Express
-var app = express();
-
-// Configure our app for morgan and body parsing with express.json and express.urlEncoded
 app.use(logger("dev"));
-// Parse request body as JSON
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
+// Request body as JSON
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 // Make public a static folder
 app.use(express.static("public"));
 
@@ -37,21 +35,11 @@ app.engine("handlebars", exphbs({ defaultLayout: "main" }));
 app.set("view engine", "handlebars");
 
 
-// Connect to the Mongo DB
-mongoose.connect("mongodb://localhost/ArticlesAndNotes", { useNewUrlParser: true });
-
-// // Mongojs configuration
-// var databaseUrl = "NotesAndArticles";
-// var collections = ["articles"];
-
-// // Hook our mongojs config to the db var
-// var db = mongojs(databaseUrl, collections);
+// // Hook our mongojs config to the dbAvar
+// var dbA= mongojs(databaseUrl, collections);
 // db.on("error", function(error) {
 //   console.log("Database Error:", error);
 // });
-
-// Routes
-// ======
 
 
 // Simple index route
@@ -135,7 +123,7 @@ app.post("/articles/:id", function(req, res) {
   db.Note.create(req.body)
     .then(function(dbNote) {
       // If a Note was created successfully, find one Article with an `_id` equal to `req.params.id`. Update the Article to be associated with the new Note
-      // { new: true } tells the query that we want it to return the updated User -- it returns the original by default
+      // { new: true } tells the query that we want it to return the updated Article -- it returns the original by default
       // Since our mongoose query returns a promise, we can chain another `.then` which receives the result of the query
       return db.Article.findOneAndUpdate({ _id: req.params.id }, { note: dbNote._id }, { new: true });
     })
@@ -148,15 +136,6 @@ app.post("/articles/:id", function(req, res) {
       res.json(err);
     });
 });
-
-
-
-
-// If deployed, use the deployed database. Otherwise use the local mongoHeadlines database
-var MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost/ArticlesAndNotes";
-
-// Connect to the Mongo DB
-mongoose.connect(MONGODB_URI);
 
 
 // Start the server

@@ -3,14 +3,13 @@ var mongoose = require("mongoose");
 // Save a reference to the Schema constructor
 var Schema = mongoose.Schema;
 
-// Using the Schema constructor, create a new UserSchema object
+// Using the Schema constructor, create a new ScraperSchema object
 // This is similar to a Sequelize model
-var UserSchema = new Schema({
+var ScraperSchema = new Schema({
 
   headline: {
     type: String,
-    trim: false,
-    required: "Username is Required"
+    trim: false
   },
 
   summary: {
@@ -18,7 +17,7 @@ var UserSchema = new Schema({
     trim: false,
   },
 
-  // You can read more about RegEx Patterns here https://www.regexbuddy.com/regex.html
+  // RegEx Pattern for url found here https://www.regexbuddy.com/regex.html
   url: {
     type: String,
     unique: true,
@@ -27,7 +26,7 @@ var UserSchema = new Schema({
 });
 
 // This creates our model from the above schema, using mongoose's model method
-var Headline = mongoose.model("Headline", UserSchema);
+var Headline = mongoose.model("Headline", ScraperSchema);
 
 // Export the User model
 module.exports = Headline;
