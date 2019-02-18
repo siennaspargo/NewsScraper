@@ -1,1 +1,0 @@
-// news articles for crud
